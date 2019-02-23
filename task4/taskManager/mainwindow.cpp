@@ -6,8 +6,7 @@
 #include <QDateTime>
 #include <dirent.h>
 #include <sys/stat.h>
-
-//#include <QLayout>
+#include <cctype>
 
 #define BUFSIZE 1024
 
@@ -25,6 +24,9 @@ MainWindow::MainWindow(QWidget *parent) :
     sysVersion();
     cpuModel();
     processInfo();
+    connect(ui->refreshButton, SIGNAL(clicked()), this, SLOT(processInfo()));
+    connect(ui->queryButton, SIGNAL(clicked()), this, SLOT(queryProcess()));
+    connect(ui->killButton, SIGNAL(clicked()), this, SLOT(killProcess()));
 }
 
 MainWindow::~MainWindow()
@@ -132,8 +134,12 @@ void MainWindow::processInfo()
     struct stat statBuf;
     QString statPath;
     ifstream statFile;
-    char name[BUFSIZE];
+    string name;
+    //char name[BUFSIZE];
     int pid, ppid, rss, priority;
+    int tempi;
+    int j = 0;
+    char tempc;
     QStringList headerLabels;
     QTableWidgetItem *nameItem;
     QTableWidgetItem *pidItem;
@@ -141,11 +147,17 @@ void MainWindow::processInfo()
     QTableWidgetItem *rssItem;
     QTableWidgetItem *priorityItem;
     ui->tableWidget->setColumnCount(5);
-    ui->tableWidget->setRowCount(5);
+    ui->tableWidget->setColumnWidth(0, 120);
+    ui->tableWidget->setColumnWidth(1, 100);
+    ui->tableWidget->setColumnWidth(2, 100);
+    ui->tableWidget->setColumnWidth(3, 100);
+    ui->tableWidget->setColumnWidth(4, 100);
+
+    ui->tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tableWidget->setSelectionMode(QAbstractItemView::NoSelection);
     headerLabels << "进程名" << "pid" << "ppid" << "占用内存/KB" << "优先级";
     ui->tableWidget->setHorizontalHeaderLabels(headerLabels);
-    ui->tableWidget->setItem(0,0,new QTableWidgetItem("Jan"));
-    ui->tableWidget->setColumnWidth(0, 120);
+
     if  ((dp = opendir("/proc")) == nullptr)
     {
         //打印出错信息;
@@ -159,31 +171,102 @@ void MainWindow::processInfo()
         lstat(entry->d_name, &statBuf);
         if (entry->d_type == DT_DIR)
         {
-            if(strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".") == 0)    //目录项的名字是”..”或”.”
+            if(!isdigit(*(entry->d_name)) || strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".") == 0)    //目录项的名字是”..”或”.”
             {
                 //ignore the dir
                 continue;
             }
-            statPath = QString("%1%2%3").arg("/proc/").arg(entry->d_name).arg("stat");
-
-            if (statPath == -1)
+            statPath = QString("%1/%2/%3").arg("/proc").arg(entry->d_name).arg("stat");
+            statFile.open(statPath.toStdString());
+            if (!statFile.is_open())
             {
                 cout << "failed to open " << statPath.toStdString() << endl;
+                continue;
             }
+            ui->tableWidget->setRowCount(i + 1);
             //get process info from /proc/%d/stat
             statFile >> pid;
             statFile >> name;
-
-
-            nameItem = new QTableWidgetItem(entry->d_name);
+            name = name.substr(1, name.length() - 2);
+            statFile >> tempc;
+            statFile >> ppid;
+            for (j = 0; j < 13; j++)
+            {
+                statFile >>tempi;
+            }
+            statFile >> priority;
+            for (j = 0; j < 5; j++)
+            {
+                statFile >>tempi;
+            }
+            statFile >> rss;
+            nameItem = new QTableWidgetItem(QString::fromStdString(name));
             ui->tableWidget->setItem(i, 0, nameItem);
-            pidItem = new QTableWidgetItem(entry->d_name);
-            ui->tableWidget->setItem(i, 0, nameItem);
+            nameItem->setTextAlignment(Qt::AlignCenter);
+            pidItem = new QTableWidgetItem(QString::number(pid));
+            ui->tableWidget->setItem(i, 1, pidItem);
+            ppidItem = new QTableWidgetItem(QString::number(ppid));
+            ui->tableWidget->setItem(i, 2, ppidItem);
+            rssItem = new QTableWidgetItem(QString::number(rss));
+            ui->tableWidget->setItem(i, 3, rssItem);
+            priorityItem = new QTableWidgetItem(QString::number(priority));
+            ui->tableWidget->setItem(i, 4, priorityItem);
+            i++;
+            statFile.close();
         }
         else    //ignore the file
         {
             continue;
         }
-
     }
+    //display every row again after queryProcess()
+    for (int j = 0; j < i; j++)
+    {
+        ui->tableWidget->setRowHidden(j, false);
+    }
+}
+
+void MainWindow::queryProcess()
+{
+    QString key = ui->lineEdit->text();
+    if (key == "")
+    {
+        return;
+    }
+    QList <QTableWidgetItem *> items = ui->tableWidget->findItems(key, Qt::MatchContains);
+    int processCount = items.count();
+    if (processCount == 0)
+    {
+        return;
+    }
+    int rowCount = ui->tableWidget->rowCount();//get line count
+    int i = 0;
+    //hidden evrey row
+    for (i = 0; i < rowCount; i++)
+    {
+        ui->tableWidget->setRowHidden(i, true);
+    }
+    //display matching processes
+    for (i = 0; i < processCount; i++)
+    {
+        int row = items[i]->row();
+        ui->tableWidget->setRowHidden(row, false);
+    }
+}
+
+void MainWindow::killProcess()
+{
+    QTableWidget *tableWidget = ui->tableWidget;
+    QTableWidgetItem *curItem = tableWidget->currentItem();
+    if (curItem == nullptr)
+    {
+        ui->testlabel->setText("bug");
+        return;
+    }
+    int row = curItem->row();
+    QTableWidgetItem *pidItem = tableWidget->item(row, 1);
+    QString pid = pidItem->text();//get pid
+    //kill process
+    QString command = QString("kill %1").arg(pid);
+    system(command.toLatin1().data());
 }

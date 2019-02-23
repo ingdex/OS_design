@@ -22,7 +22,11 @@ private:
     void sysRunTime();
     void sysVersion();
     void cpuModel();
+    //void processInfo();
+    //void killProcess();
+private slots:
     void processInfo();
+    void queryProcess();
     void killProcess();
 };
 
