@@ -1,0 +1,8 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include "pv.h"
+#include <stdio.h>
+#include <QTimer>
+
+QTimer * timer;
+long int i;

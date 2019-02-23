@@ -1,0 +1,25 @@
+#include <stdio.h>
+#include <QTimer>
+#include <QEventLoop>
+
+QTimer * timer;
+long int i;
+int semid;
+int shmid;
+FILE * srcFile;
+FILE * desFile;
+struct buffers * shm1;
+struct buffers * shm2;
+
+MainWindow::MainWindow(QWidget *parent) :
+    QMainWindow(parent),
+    ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+    setWindowTitle("put");
+    //buf2
+    if ((shmid = shmget(KEY2, sizeof(buffers), IPC_CREAT|0666)) == -1)
+    {
+        printf("put shmget failed\n");
+        exit(1);
+    }

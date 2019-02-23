@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>610</width>
+    <height>519</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <widget class="QTabWidget" name="tabWidget">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>0</y>
+      <width>591</width>
+      <height>441</height>
+     </rect>
+    </property>
+    <property name="currentIndex">
+     <number>1</number>
+    </property>
+    <widget class="QWidget" name="tab">
+     <attribute name="title">
+      <string>系统信息</string>
+     </attribute>
+     <widget class="QLabel" name="label_2">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>60</y>
+        <width>91</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>系统启动时间</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_5">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>180</y>
+        <width>111</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>cpu型号和主频</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_3">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>100</y>
+        <width>91</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>持续运行时间</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="hostNameDisplay">
+      <property name="geometry">
+       <rect>
+        <x>130</x>
+        <y>20</y>
+        <width>300</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>hostName</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="sysBootTimeDisplay">
+      <property name="geometry">
+       <rect>
+        <x>130</x>
+        <y>60</y>
+        <width>300</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>sysBootTime</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>20</y>
+        <width>51</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>主机名</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="label_4">
+      <property name="geometry">
+       <rect>
+        <x>20</x>
+        <y>140</y>
+        <width>91</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>系统的版本号</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="sysVersonDisplay">
+      <property name="geometry">
+       <rect>
+        <x>130</x>
+        <y>140</y>
+        <width>300</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>sysVerson</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="sysRunTimeDisplay">
+      <property name="geometry">
+       <rect>
+        <x>130</x>
+        <y>100</y>
+        <width>300</width>
+        <height>17</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>sysRunTime</string>
+      </property>
+     </widget>
+     <widget class="QLabel" name="cpuModelDisplay">
+      <property name="geometry">
+       <rect>
+        <x>130</x>
+        <y>180</y>
+        <width>361</width>
+        <height>141</height>
+       </rect>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="layoutDirection">
+       <enum>Qt::LeftToRight</enum>
+      </property>
+      <property name="inputMethodHints">
+       <set>Qt::ImhNone</set>
+      </property>
+      <property name="text">
+       <string>cpuModel</string>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="tab_2">
+     <attribute name="title">
+      <string>进程</string>
+     </attribute>
+     <widget class="QTableWidget" name="tableWidget">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>40</y>
+        <width>571</width>
+        <height>351</height>
+       </rect>
+      </property>
+     </widget>
+    </widget>
+    <widget class="QWidget" name="tab_3">
+     <attribute name="title">
+      <string>操作</string>
+     </attribute>
+    </widget>
+   </widget>
+  </widget>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>610</width>
+     <height>28</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QToolBar" name="mainToolBar">
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,3 @@
+/home/ingdex/CLionProjects/fcopy/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/ingdex/CLionProjects/fcopy/cmake-build-debug/CMakeFiles/fcopy.dir
+/home/ingdex/CLionProjects/fcopy/cmake-build-debug/CMakeFiles/edit_cache.dir
