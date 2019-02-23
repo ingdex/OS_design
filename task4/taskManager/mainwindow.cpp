@@ -7,8 +7,14 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cctype>
+#include <QTimer>
+#include <QDateTime>
+#include <QLabel>
+#include <QPainter>
 
-#define BUFSIZE 1024
+#define BUF_SIZE 1024
+#define MAP_WIDTH 600
+#define MAP_HEIGHT 160
 
 using namespace std;
 
@@ -20,13 +26,17 @@ MainWindow::MainWindow(QWidget *parent) :
     setWindowTitle("Task Manager");
     hostName();
     sysBootTime();
-    sysRunTime();
     sysVersion();
     cpuModel();
     processInfo();
+    displaySysRunTime();
+    displayCurTime();
+    displayCpuUtilization();
+    displayMemUtilization();
     connect(ui->refreshButton, SIGNAL(clicked()), this, SLOT(processInfo()));
     connect(ui->queryButton, SIGNAL(clicked()), this, SLOT(queryProcess()));
     connect(ui->killButton, SIGNAL(clicked()), this, SLOT(killProcess()));
+
 }
 
 MainWindow::~MainWindow()
@@ -42,7 +52,7 @@ void MainWindow::hostName()
         ui->hostNameDisplay->setText("failed to open");
         return;
     }
-    char host_name[BUFSIZE];
+    char host_name[BUF_SIZE];
     ifile >> host_name;
     ui->hostNameDisplay->setText(host_name);
     ifile.close();
@@ -67,7 +77,14 @@ void MainWindow::sysBootTime()
     ifile.close();
 }
 
-void MainWindow::sysRunTime()
+void MainWindow::displaySysRunTime()
+{
+    QTimer *timer = new QTimer(this);//timer
+    timer->start(1000);
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateSysRunTime()));
+}
+
+void MainWindow::updateSysRunTime()
 {
     ifstream ifile("/proc/uptime");
     if (!ifile.is_open())
@@ -90,7 +107,7 @@ void MainWindow::sysVersion()
         ui->sysVersonDisplay->setText("failed to open");
         return;
     }
-    char ostype[BUFSIZE], osrelease[BUFSIZE];
+    char ostype[BUF_SIZE], osrelease[BUF_SIZE];
     ifile1 >> ostype;
     ifile2 >> osrelease;
     ui->sysVersonDisplay->setText(QString("%1%2").arg(ostype).arg(osrelease));
@@ -127,6 +144,11 @@ void MainWindow::cpuModel()
     ifile.close();
 }
 
+void MainWindow::displayProcessInfo()
+{
+
+}
+
 void MainWindow::processInfo()
 {
     DIR *dp;
@@ -135,7 +157,7 @@ void MainWindow::processInfo()
     QString statPath;
     ifstream statFile;
     string name;
-    //char name[BUFSIZE];
+    //char name[BUF_SIZE];
     int pid, ppid, rss, priority;
     int tempi;
     int j = 0;
@@ -265,4 +287,191 @@ void MainWindow::killProcess()
     //kill process
     QString command = QString("kill %1").arg(pid);
     system(command.toLatin1().data());
+}
+
+void MainWindow::displayCurTime()
+{
+    curTimeLabel = new QLabel;
+    ui->statusBar->addPermanentWidget(curTimeLabel, 10);
+    updateCurTime();
+    QTimer *timer = new QTimer(this);//timer
+    timer->start(1000);
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateCurTime()));
+}
+
+void MainWindow::updateCurTime()
+{
+    QDateTime time = QDateTime::currentDateTime();//获取系统现在的时间
+    QString timeStr = time.toString("    yyyy-MM-dd hh:mm:ss ddd");
+    curTimeLabel->setText(timeStr);
+}
+
+void MainWindow::displayCpuUtilization()
+{
+    cpuUtilizationLabel = new QLabel;
+    ui->statusBar->addPermanentWidget(cpuUtilizationLabel, 4);
+    updateCpuUtilization();
+    QTimer *timer = new QTimer(this);//timer
+    timer->start(500);
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateCpuUtilization()));
+}
+
+void MainWindow::updateCpuUtilization()
+{
+    QString str;
+    string cpu;
+    long int user, nice, sys, idle, iowait, irq, softirq;
+    long int idle1, idle2, total1, total2;
+    long int totalInterval;
+    long int idleInterval;
+    int utilization;
+    std::ifstream in("/proc/stat");
+    if(!in.is_open())
+    {
+        cout << "failed to open systerm file" << endl;
+    }
+    //get cpu usage for the first time
+    in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
+    idle1 = idle;
+    total1 = user + nice + sys + idle + iowait + irq + softirq;
+    //wait for 100ms
+    QEventLoop eventLoop;
+    QTimer::singleShot(100, &eventLoop, SLOT(quit()));
+    eventLoop.exec();
+    //get cpu usage for the second time
+    in.close();
+    in.open("/proc/stat");
+    in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
+    idle2 = idle;
+    total2 = user + nice + sys + idle + iowait + irq + softirq;
+    //calculate CPU utilization
+    totalInterval = total2 - total1;
+    idleInterval = idle2 - idle1;
+    utilization = (int)(100 * (totalInterval - idleInterval) / totalInterval);
+    //display CPU utilizaton
+    str = QString("CPU: %1%").arg(utilization);
+    cpuUtilizationLabel->setText(str);
+    in.close();
+}
+
+void MainWindow::displayMemUtilization()
+{
+    memUtilizationLabel = new QLabel;
+    ui->statusBar->addPermanentWidget(memUtilizationLabel, 8);
+    updateMemUtilization();
+    QTimer *timer = new QTimer(this);//timer
+    timer->start(500);
+    connect(timer, SIGNAL(timeout()), this, SLOT(updateMemUtilization()));
+}
+
+void MainWindow::updateMemUtilization()
+{
+    string tmp;
+    int memTotal, memFree;
+    int utilization;
+    QString str;
+    std::ifstream in("/proc/meminfo");
+    if(!in.is_open())
+    {
+        cout << "failed to open /proc/meminfo" << endl;
+    }
+    //get mem usage for the first time
+    in >> tmp >> memTotal >> tmp >> tmp >> memFree;
+    utilization = 100 * (memTotal - memFree) / memTotal;
+    //display CPU utilizaton
+    str = QString("Mem: %1%").arg(utilization);
+    memUtilizationLabel->setText(str);
+    in.close();
+}
+
+void MainWindow::drawCpuLine()
+{
+    QTimer *timer1 = new QTimer;
+    timer1->start(200);
+    connect(timer1, SIGNAL(timeout), this, SLOT(updateCpuLineList()));
+    QTimer *timer2 = new QTimer;
+    timer2->start(200);
+    connect(timer2, SIGNAL(timeout), this, SLOT(updateCpuLine()));
+}
+
+void MainWindow::updateCpuLine()
+{
+    QPixmap pixmap(MAP_WIDTH, MAP_HEIGHT);
+    QPainter painter(&pixmap);
+    pixmap.fill(Qt::white);
+    QPen pen;
+    pen.setColor(Qt::gray);
+    for (int i=1; i<5; i++)
+    {
+        painter.drawLine(0, i*MAP_HEIGHT/5, MAP_WIDTH, i*MAP_HEIGHT/5);
+    }
+    pen.setColor(Qt::red);
+    pen.setWidth(2);
+}
+
+void MainWindow::updateCpuLineList()
+{
+    QString str;
+    string cpu;
+    long int user, nice, sys, idle, iowait, irq, softirq;
+    long int idle1, idle2, total1, total2;
+    long int totalInterval;
+    long int idleInterval;
+    int utilization;
+    std::ifstream in("/proc/stat");
+    if(!in.is_open())
+    {
+        cout << "failed to open systerm file" << endl;
+    }
+    //get cpu usage for the first time
+    in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
+    idle1 = idle;
+    total1 = user + nice + sys + idle + iowait + irq + softirq;
+    //wait for 100ms
+    QEventLoop eventLoop;
+    QTimer::singleShot(100, &eventLoop, SLOT(quit()));
+    eventLoop.exec();
+    //get cpu usage for the second time
+    in.close();
+    in.open("/proc/stat");
+    in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
+    idle2 = idle;
+    total2 = user + nice + sys + idle + iowait + irq + softirq;
+    //calculate CPU utilization
+    totalInterval = total2 - total1;
+    idleInterval = idle2 - idle1;
+    utilization = (int)(totalInterval - idleInterval) / totalInterval;
+    //display CPU utilizaton
+    cpuLineList.push_back(utilization * MAP_HEIGHT);
+    in.close();
+}
+
+void MainWindow::drawMemLine()
+{
+
+}
+
+void MainWindow::updateMemLine()
+{
+
+}
+
+void MainWindow::updateMemLineList()
+{
+
+}
+
+void MainWindow::drawSwapLine()
+{
+
+}
+
+void MainWindow::updateSwapLine()
+{
+
+}
+
+void MainWindow::updateSwapLineList()
+{
+
 }

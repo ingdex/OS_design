@@ -15,7 +15,7 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->setupUi(this);
     setWindowTitle("CPU utilization");
     QTimer *timer = new QTimer(this);//timer
-    timer->start(2000);//2s
+    timer->start(500);
     connect(timer, SIGNAL(timeout()), this, SLOT(CPUUtilizationDisplay()));
 }
 
@@ -42,12 +42,17 @@ void MainWindow::CPUUtilizationDisplay()
     in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
     idle1 = idle;
     total1 = user + nice + sys + idle + iowait + irq + softirq;
+    in.close();
     //wait for 10ms
     QEventLoop eventLoop;
     QTimer::singleShot(10, &eventLoop, SLOT(quit()));
     eventLoop.exec();
     //get cpu usage for the second time
-    in.seekg(in.beg);
+    in.open("/proc/stat");
+    if(!in.is_open())
+    {
+        cout << "failed to open systerm file" << endl;
+    }
     in >> cpu >> user >> nice >> sys >> idle >> iowait >> irq >> softirq;
     idle2 = idle;
     total2 = user + nice + sys + idle + iowait + irq + softirq;
@@ -57,4 +62,5 @@ void MainWindow::CPUUtilizationDisplay()
     utilization = (int)(100 * (totalInterval - idleInterval) / totalInterval);
     //display CPU utilizaton
     ui->CPUUtilizationDisplay->setText(str.number(utilization, 10));
+    in.close();
 }
