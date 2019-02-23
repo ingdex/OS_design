@@ -235,10 +235,6 @@ void MainWindow::queryProcess()
     }
     QList <QTableWidgetItem *> items = ui->tableWidget->findItems(key, Qt::MatchContains);
     int processCount = items.count();
-    if (processCount == 0)
-    {
-        return;
-    }
     int rowCount = ui->tableWidget->rowCount();//get line count
     int i = 0;
     //hidden evrey row
