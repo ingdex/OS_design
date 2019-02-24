@@ -18,6 +18,7 @@ public:
     ~MainWindow();
 
 private:
+    int query;
     Ui::MainWindow *ui;
     void hostName();
     void sysBootTime();
@@ -35,8 +36,8 @@ private:
     QList <int> memLineList;
     QList <int> swapLineList;
     void drawCpuLine();
-    void drawMemLine();
-    void drawSwapLine();
+    void drawMemAndSwapLine();
+    //void drawSwapLine();
 private slots:
     void updateSysRunTime();
     void processInfo();
@@ -46,11 +47,15 @@ private slots:
     void updateCpuUtilization();
     void updateMemUtilization();
     void updateCpuLine();
-    void updateMemLine();
-    void updateSwapLine();
+    void updateMemAndSwapLine();
+    //void updateSwapLine();
     void updateCpuLineList();
-    void updateMemLineList();
-    void updateSwapLineList();
+    void updateMemAndSwapLineList();
+    //void updateSwapLineList();
+    void runProcess();
+    void powerOff();
+    void refresh();
+    void debug();
 };
 
 #endif // MAINWINDOW_H
