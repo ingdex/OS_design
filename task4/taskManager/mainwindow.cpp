@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QPainter>
 #include <confirm.h>
+#include <QProcess>
 
 #define BUF_SIZE 1024
 #define MAP_WIDTH 600
@@ -390,7 +391,7 @@ void MainWindow::displayMemUtilization()
 void MainWindow::updateMemUtilization()
 {
     string tmp;
-    int memTotal, memFree;
+    int memTotal, memFree, memAvailable;
     int utilization;
     QString str;
     std::ifstream in("/proc/meminfo");
@@ -398,9 +399,9 @@ void MainWindow::updateMemUtilization()
     {
         cout << "failed to open /proc/meminfo" << endl;
     }
-    //get mem usage for the first time
-    in >> tmp >> memTotal >> tmp >> tmp >> memFree;
-    utilization = 100 * (memTotal - memFree) / memTotal;
+    //get mem usage
+    in >> tmp >> memTotal >> tmp >> tmp >> memFree >> tmp >> tmp >> memAvailable;
+    utilization = 100 * (memTotal - memAvailable) / memTotal;
     //display CPU utilizaton
     str = QString("Mem: %1%").arg(utilization);
     memUtilizationLabel->setText(str);
@@ -582,7 +583,7 @@ void MainWindow::updateMemAndSwapLineList()
 {
     string tmpStr;
     int tmpInt;
-    int memTotal, memFree;
+    int memTotal, memFree, memAvailable;
     int memUtilization;
     int swapTotal, swapFree;
     int swapUtilization;
@@ -593,13 +594,13 @@ void MainWindow::updateMemAndSwapLineList()
         cout << "failed to open /proc/meminfo" << endl;
     }
     //get mem and swap usage
-    in >> tmpStr >> memTotal >> tmpStr >> tmpStr >> memFree >>tmpStr;
-    for (int i=0; i<12; i++)
+    in >> tmpStr >> memTotal >> tmpStr >> tmpStr >> memFree >> tmpStr >> tmpStr >> memAvailable >> tmpStr;
+    for (int i=0; i<11; i++)
     {
         in >> tmpStr >> tmpInt >> tmpStr;
     }
     in >> tmpStr >> swapTotal >> tmpStr >> tmpStr >> swapFree >>tmpStr;
-    memUtilization = 100 * (memTotal - memFree) / memTotal;
+    memUtilization = 100 * (memTotal - memAvailable) / memTotal;
     swapUtilization = 100 * (swapTotal - swapFree) / swapTotal;
     //add mem line point
     if (memLineList.size() < MAX_POINTS_COUNT)
@@ -634,16 +635,19 @@ void MainWindow::runProcess()
     {
         return;
     }
+    QProcess *pro = new QProcess();
+    pro->start(path);
 //    struct stat statBuf;
 //    if (lstat(path.toLatin1().data(), &statBuf) == -1)
 //    {
 //        return;
 //    }
-    int re = system(path.toLatin1().data());
-    if (re != 0)
-    {
-        ui->lineEdit_2->setText("could not run the process!");
-    }
+
+//    int re = system(path.toLatin1().data());
+//    if (re != 0)
+//    {
+//        ui->lineEdit_2->setText("could not run the process!");
+//    }
 }
 
 void MainWindow::powerOff()
