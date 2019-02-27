@@ -13,17 +13,17 @@ using namespace std;
 FileSys::FileSys(string filename)
 {
     volumeName = filename;
-//    volume.open(filename);
-//    if (!volume.is_open())
-//    {
-//        cout << "can't open file volume!" << endl;
-//        exit(0);
-//    }
-//    int t = 1;
-//    volume << t;
-//    volume.seekg(0, ios_base::beg);
-//    volume >> t;
-//    cout << t;
+    fstream volume(filename);
+    if (!volume.is_open())
+    {
+        cout << "can't open file volume!" << endl;
+        exit(0);
+    }
+    char zero = '0';
+    for (int i=0; i<2097152; i++)
+    {
+        volume.write(&zero, 1);
+    }
 
 }
 
@@ -35,57 +35,85 @@ FileSys::~FileSys()
 int FileSys::init()
 {
     fstream volume(volumeName);
+    if (!volume.is_open())
+    {
+        cout << "open failed" << endl;
+        exit(0);
+    }
     char zero[BLOCK_SIEZ];
-    memset(zero, '0', BLOCK_SIEZ);
-    managementBlock = {S_ISIZE, S_FSIZE, S_NFREE, S_NINDOE};
+    memset(zero, 0, BLOCK_SIEZ);
+    managementBlock = {S_ISIZE, S_FSIZE, S_NFREE, S_NINDOE-1};
     //初始化管理块
     volume.write(zero, BLOCK_SIEZ);
     volume.seekp(0, ios_base::beg);
-    volume << managementBlock.s_isize
-         << managementBlock.s_fsize
-         << managementBlock.s_nfree
-         << managementBlock.s_ninode;
+    volume.write((char *)&managementBlock, sizeof(ManagementBlock));
     //初始化inode位示图
     inodeBitMap.byte[0] = static_cast<char>(0x80);
     for (int i=1; i<S_NINDOE/8; i++)
     {
         inodeBitMap.byte[i] = 0;
     }
-    volume << inodeBitMap.byte[0];
-    for (int i=1; i<S_NINDOE/8; i++)
-    {
-        volume << inodeBitMap.byte[i];
-    }
+    volume.write(inodeBitMap.byte, S_NINDOE/8);
     //初始化位示图块
     bitmap.byte[0] = static_cast<char>(0xff);  //0、1块、inode区已占用、第一个空闲块为存放主目录第一块
     bitmap.byte[1] = static_cast<char>(0xff);
-    bitmap.byte[2] = static_cast<char>(0xfe);
+    bitmap.byte[2] = static_cast<char>(0xfe);   //前23块已用
     for (int i=3; i<BLOCK_SIEZ; i++)
     {
         bitmap.byte[i] = 0;
     }
     volume.seekp(BLOCK_SIEZ, ios_base::beg);
     volume.write((char *)bitmap.byte, BLOCK_SIEZ);
+
+    //debug
+    volume.seekg(BLOCK_SIEZ);
+    volume.read((char *)bitmap.byte, BLOCK_SIEZ);
+
     //初始化inode区
+    volume.seekp(FIRST_INODE_BLOCK * BLOCK_SIEZ);
     for (int i=0; i<S_ISIZE; i++)
     {
         volume.write(zero, BLOCK_SIEZ);
     }
-    volume.seekp(-S_ISIZE * BLOCK_SIEZ, ios_base::cur);
+
+    Inode inode;
     inode.i_uid = -1;   //全部用户均可访问
     inode.i_type = '0';   //fold
     inode.i_addr[0] = FIRST_FREE_BLOCK;
-    volume << inode.i_uid
-        << inode.i_type
-        << inode.i_addr[0];
+    for (int i=1; i<13; i++)
+    {
+        inode.i_addr[i] = 0;
+    }
+    volume.seekp(FIRST_INODE_BLOCK * BLOCK_SIEZ);
+    volume.write((char *)&inode, sizeof(Inode));
+
+    //debug
+    volume.seekg(FIRST_INODE_BLOCK * BLOCK_SIEZ);
+    volume.read((char *)&inode, sizeof(Inode));
+
+    //主目录下目录项数置为0
+    int entryCount = 0;
+    volume.seekp(FIRST_FREE_BLOCK*BLOCK_SIEZ);
+    volume.write((char *)&entryCount, sizeof(int));
+
+    //debug
+    volume.seekg(FIRST_FREE_BLOCK*BLOCK_SIEZ, ios_base::beg);
+    volume.read((char *)&entryCount, sizeof(int));
 
     volume.close();
+
     return 0;
 }
 
 int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
 {
     fstream volume(volumeName);
+    if (!volume.is_open())
+    {
+        cout << "open failed" << endl;
+        exit(0);
+    }
+    //增加inode
     int inodeNum = mallocInode();
     if (inodeNum <= 0)
     {
@@ -107,16 +135,19 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
         inode.i_addr[i] = 0;
     }
     volume.seekp(FIRST_INODE_BLOCK*BLOCK_SIEZ + inodeNum*sizeof(Inode), ios_base::beg);
-    volume << inode.i_uid
-        << inode.i_type
-        << inode.i_addr[0];
-    for (int i=1; i<13; i++)
-    {
-        volume << inode.i_addr[i];
-    }
+    volume.write((char *)&inode, sizeof(Inode));
+
+    //debug
+    volume.seekg(FIRST_INODE_BLOCK*BLOCK_SIEZ + inodeNum*sizeof(Inode), ios_base::beg);
+    volume.read((char *)&inode, sizeof(Inode));
+
+    //初始化新文件i_addr[0]
+    int count = 0;
+    volume.seekp(inode.i_addr[0] * BLOCK_SIEZ);
+    volume.write((char *)&count, sizeof(int));
 
     //在父目录下建立目录项
-    Inode *inodep = getInode(parentInodeNum);
+    Inode inodeParent = getInode(parentInodeNum);
     int addr = 0;
     int entryCount = 0;
     Entry entry;
@@ -127,7 +158,7 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
     //找到目录项要写入的块
     for (int i=0; i<10; i++)
     {
-        addr = inodep->i_addr[i];
+        addr = inodeParent.i_addr[i];
         if (addr == 0)
         {   //需要增加块
             addr = mallocBlock();
@@ -136,14 +167,23 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
                 cout << "块数目不足" << endl;
                 return -1;
             }
-            inodep->i_addr[i] = addr;
-            volume.seekp(addr*BLOCK_SIEZ, ios_base::beg);
+
+            inodeParent.i_addr[i] = addr;
+            writeInode(inodeParent, parentInodeNum);
             entryCount = 0;
-            volume << entryCount;
+            volume.seekp(addr*BLOCK_SIEZ, ios_base::beg);
+            volume.write((char *)&entryCount, sizeof(int));
+
+            //debug
+            volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
+            volume.read((char *)&entryCount, sizeof(int));
+
             break;
         }
+        //获取当前块中的目录项数目
         volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
-        volume >> entryCount;
+        volume.read((char *)&entryCount, sizeof(int));
+
         if (entryCount < MAX_ENTRY_COUNT)
         {
             break;
@@ -151,12 +191,22 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
     }
     //写入目录项
     volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
-    volume >> entryCount;
+    volume.read((char *)&entryCount, sizeof(int));
     entryCount++;
     volume.seekp(addr*BLOCK_SIEZ, ios_base::beg);
-    volume << entryCount;
-    volume.seekp(addr*BLOCK_SIEZ+(entryCount-1)*sizeof(Entry), ios_base::beg);
+    volume.write((char *)&entryCount, sizeof(int));
+
+    //debug
+    volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
+    volume.read((char *)&entryCount, sizeof(int));
+
+    volume.seekp(addr*BLOCK_SIEZ + sizeof(int) + (entryCount-1)*sizeof(Entry), ios_base::beg);
     volume.write((char *)&entry, sizeof(Entry));
+
+    //debug
+    volume.seekg(addr*BLOCK_SIEZ + sizeof(int) + (entryCount-1)*sizeof(Entry), ios_base::beg);
+    volume.read((char *)&entry, sizeof(Entry));
+
     volume.close();
 
     return 0;
@@ -175,8 +225,8 @@ int FileSys::writeFile() {}
 int FileSys::displayFile(int inodeNum)
 {
     fstream volume(volumeName);
-    Inode *inodep = getInode(inodeNum);
-    int i = 0, addr = 0;
+    Inode inode = getInode(inodeNum);
+    int i = 0, j= 0, addr = 0;
     int entryCount = 0; //目录项数目
     int charCount = 0;  //字符数目
     Entry entry;
@@ -191,12 +241,18 @@ int FileSys::displayFile(int inodeNum)
             {
                 break;
             }
-            volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
-            volume >> entryCount;
-            for (int i=0; i<entryCount; i++)
+            volume.seekg(addr*BLOCK_SIEZ);
+            volume.read((char *)&entryCount, sizeof(int));
+            for (int j=0; j<entryCount; j++)
             {
                 volume.read((char *)&entry, sizeof(Entry));
-                cout << entry.name << endl;
+                cout << entry.name;
+                if (j == entryCount - 1)
+                {
+                    cout << endl;
+                    break;
+                }
+                cout << " ";
             }
             if (entryCount < MAX_ENTRY_COUNT)
             {
@@ -216,7 +272,7 @@ int FileSys::displayFile(int inodeNum)
                 break;
             }
             volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
-            volume >> charCount;
+            volume.read((char *)&charCount, sizeof(int));
             volume.read(content, charCount);
             cout << content;
             if (charCount < MAX_CHAR_COUNT)
@@ -228,7 +284,6 @@ int FileSys::displayFile(int inodeNum)
 
         }
     }
-    delete(inodep);
     volume.close();
 
     return 0;
@@ -464,26 +519,27 @@ int FileSys::freeBlock(int blockPos)
     updateManegementBlock(managementBlock);
 }
 
-Inode * FileSys::getInode(int inodeNum)
+Inode FileSys::getInode(int inodeNum)
 {
     fstream volume(volumeName);
-    Inode *inodep = new Inode;
-    if (inodep == nullptr)
+    Inode inode;
+    if (!volume.is_open())
     {
-        cout << "内存申请失败" <<endl;
+        cout << "open failed" << endl;
         exit(0);
     }
-    volume.seekg(FIRST_INODE_BLOCK*BLOCK_SIEZ+inodeNum* sizeof(Inode), ios_base::beg);
-    volume.read((char *)inodep, sizeof(Inode));
+
+    volume.seekg(FIRST_INODE_BLOCK*BLOCK_SIEZ + inodeNum*sizeof(Inode), ios_base::beg);
+    volume.read((char *)&inode, sizeof(Inode));
     volume.close();
-    return inodep;
+    return inode;
 }
 
-int FileSys::writeInode(Inode const *inodep, const int inodeNum)
+int FileSys::writeInode(Inode inode, int inodeNum)
 {
     fstream volume(volumeName);
-    volume.seekp(FIRST_INODE_BLOCK*BLOCK_SIEZ+inodeNum* sizeof(Inode), ios_base::beg);
-    volume.write((char *)inodep, sizeof(Inode));
+    volume.seekp(FIRST_INODE_BLOCK*BLOCK_SIEZ + inodeNum* sizeof(Inode));
+    volume.write((char *)&inode, sizeof(Inode));
     volume.close();
     return 0;
 }
@@ -491,16 +547,11 @@ int FileSys::writeInode(Inode const *inodep, const int inodeNum)
 int FileSys::updateManegementBlock(ManagementBlock managementBlock)
 {
     fstream volume(volumeName);
+    //更新管理块
     volume.seekp(0, ios_base::beg);
-    volume << managementBlock.s_isize
-           << managementBlock.s_fsize
-           << managementBlock.s_nfree
-           << managementBlock.s_ninode;
+    volume.write((char *)&managementBlock, sizeof(ManagementBlock));
     //更新inode位示图
-    for (int i=0; i<S_NINDOE/8; i++)
-    {
-        volume << inodeBitMap.byte[i];
-    }
+    volume.write((char *)&inodeBitMap.byte, S_NINDOE/8);
     //更新位示图块
     volume.seekp(BLOCK_SIEZ, ios_base::beg);
     volume.write((char *)bitmap.byte, BLOCK_SIEZ);

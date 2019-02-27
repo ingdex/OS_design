@@ -65,8 +65,8 @@ private:
     int mallocBlock();              //申请一个空闲块，返回空闲块绝对块号，不存在空闲块时返回-1
     int freeInode(int inodePos);    //释放inode
     int freeBlock(int blockPos);    //释放block
-    Inode *getInode(int inodeNum);  //获取inode结点
-    int writeInode(Inode const *inodep, const int inodeNum);
+    Inode getInode(int inodeNum);  //获取inode结点
+    int writeInode(Inode inode, int inodeNum);
     int updateManegementBlock(ManagementBlock managementBlock);
 public:
     FileSys(string filename);
