@@ -1,3 +1,7 @@
+//
+// Created by ingdex on 19-2-25.
+//
+
 #include "filesys.h"
 #include <iostream>
 #include <string>
@@ -5,10 +9,6 @@
 #include <cstring>
 
 using namespace std;
-
-//
-// Created by ingdex on 19-2-25.
-//
 
 FileSys::FileSys(string filename)
 {
@@ -19,12 +19,11 @@ FileSys::FileSys(string filename)
         cout << "can't open file volume!" << endl;
         exit(0);
     }
-    char zero = '0';
-    for (int i=0; i<2097152; i++)
-    {
-        volume.write(&zero, 1);
-    }
-
+    volume.read((char *)&managementBlock, sizeof(ManagementBlock));
+    volume.read((char *)&inodeBitMap, sizeof(InodeBitMap));
+    volume.seekg(BIT_MAP * BLOCK_SIEZ);
+    volume.read((char *)&bitmap, sizeof(BitMap));
+    volume.close();
 }
 
 FileSys::~FileSys()
@@ -78,7 +77,7 @@ int FileSys::init()
 
     Inode inode;
     inode.i_uid = -1;   //全部用户均可访问
-    inode.i_type = '0';   //fold
+    inode.i_type = DIR;   //fold
     inode.i_addr[0] = FIRST_FREE_BLOCK;
     for (int i=1; i<13; i++)
     {
@@ -91,10 +90,18 @@ int FileSys::init()
     volume.seekg(FIRST_INODE_BLOCK * BLOCK_SIEZ);
     volume.read((char *)&inode, sizeof(Inode));
 
-    //主目录下目录项数置为0
-    int entryCount = 0;
+    //主目录下目录项数置为2
+    int entryCount = 2;
     volume.seekp(FIRST_FREE_BLOCK*BLOCK_SIEZ);
     volume.write((char *)&entryCount, sizeof(int));
+    //写入./和../目录项
+    Entry entry;
+    entry.inodeNum = 0;
+    strcpy(entry.name, "./");
+    volume.write((char *)&entry, sizeof(Entry));
+    entry.inodeNum = 0;
+    strcpy(entry.name, "../");
+    volume.write((char *)&entry, sizeof(Entry));
 
     //debug
     volume.seekg(FIRST_FREE_BLOCK*BLOCK_SIEZ, ios_base::beg);
@@ -112,6 +119,46 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
     {
         cout << "open failed" << endl;
         exit(0);
+    }
+    //查找文件是否已存在
+    Entry entry;
+    int addr = 0, entryCount = 0;
+    Inode parentInode = getInode(parentInodeNum);
+
+    for (int i=0; i<10; i++)
+    {
+        if ((addr = parentInode.i_addr[i]) == 0)
+        {   //文件不存在，进入下一步操作
+            break;
+        }
+        volume.seekg(addr * BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, filename.c_str()) == 0)
+            {   //已有文件名为filename的文件
+                Inode inode = getInode(entry.inodeNum);
+                if (inode.i_type == REG_FILE)
+                {
+                    cout << "已经存在普通文件" << filename << endl;
+                    return -1;
+                }
+                else if (inode.i_type == DIR)
+                {
+                    cout << "已经存在目录" << filename << endl;
+                    return -1;
+                }
+
+            }
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //不存在重名文件，继续下一步操作
+            break;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
     }
     //增加inode
     int inodeNum = mallocInode();
@@ -142,15 +189,28 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
     volume.read((char *)&inode, sizeof(Inode));
 
     //初始化新文件i_addr[0]
-    int count = 0;
-    volume.seekp(inode.i_addr[0] * BLOCK_SIEZ);
-    volume.write((char *)&count, sizeof(int));
+    if (type == DIR)
+    {   //如果为目录文件，写入./和../目录项
+        int entryCount = 2;
+        volume.seekp(inode.i_addr[0] * BLOCK_SIEZ);
+        volume.write((char *)&entryCount, sizeof(int));
+        Entry entry;
+        entry.inodeNum = inodeNum;
+        strcpy(entry.name, "./");
+        volume.write((char *)&entry, sizeof(Entry));
+        entry.inodeNum = parentInodeNum;
+        strcpy(entry.name, "../");
+        volume.write((char *)&entry, sizeof(Entry));
+    }
+    else
+    {
+        int charCount = 0;
+        volume.seekp(inode.i_addr[0] * BLOCK_SIEZ);
+        volume.write((char *)&charCount, sizeof(int));
+    }
 
     //在父目录下建立目录项
     Inode inodeParent = getInode(parentInodeNum);
-    int addr = 0;
-    int entryCount = 0;
-    Entry entry;
     //构建目录项
     entry.inodeNum = inodeNum;
     strcpy(entry.name, filename.c_str());
@@ -209,7 +269,7 @@ int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
 
     volume.close();
 
-    return 0;
+    return inodeNum;
 }
 
 int FileSys::deleteFile(int inodeNum) {}
@@ -219,8 +279,6 @@ int FileSys::openFile(Inode inode) {}
 int FileSys::closeFile(Inode inode) {}
 
 int FileSys::readFile() {}
-
-int FileSys::writeFile() {}
 
 int FileSys::displayFile(int inodeNum)
 {
@@ -233,7 +291,7 @@ int FileSys::displayFile(int inodeNum)
     string str; //文件内容
     char content[BLOCK_SIEZ];
     memset(content, 0, BLOCK_SIEZ);
-    if (inode.i_type == '0')  //是目录文件
+    if (inode.i_type == DIR)  //是目录文件
     {
         for (i=0; i<10; i++)
         {
@@ -274,6 +332,7 @@ int FileSys::displayFile(int inodeNum)
             volume.seekg(addr*BLOCK_SIEZ, ios_base::beg);
             volume.read((char *)&charCount, sizeof(int));
             volume.read(content, charCount);
+            content[charCount] = '\0';
             cout << content;
             if (charCount < MAX_CHAR_COUNT)
             {
@@ -286,6 +345,214 @@ int FileSys::displayFile(int inodeNum)
     }
     volume.close();
 
+    return 0;
+}
+
+int FileSys::cdDir(int parentInodeNum, string dirName, int &curdir)          //进入目录
+{
+    int  i = 0;
+    int addr = 0;
+    fstream volume(volumeName);
+    Entry entry;
+    int entryCount = 0;
+    Inode parentInode = getInode(parentInodeNum);
+    for (i=0; i<10; i++)
+    {
+        if ((addr = parentInode.i_addr[i]) == 0)
+        {
+            cout << "目录不存在" << endl;
+            return -1;
+        }
+        volume.seekg(addr*BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, dirName.c_str()) == 0)
+            {
+                Inode inode = getInode(entry.inodeNum);
+                if (inode.i_type != DIR)
+                {
+                    cout << dirName << "不是目录" << endl;
+                    return -1;
+                }
+                curdir = entry.inodeNum;
+                return 0;
+            }
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {
+            cout << "目录不存在" << endl;
+            return -1;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
+    }
+    return -1;
+}
+
+int FileSys::catFile(int parentInodeNum, string filename)       //输出普通文件内容
+{
+    fstream volume(volumeName);
+    Inode parentInode = getInode(parentInodeNum);
+    Entry entry;
+    int entryCount = 0, addr = 0, i = 0, inodeNum = 0;
+    //找到父目录下的文件名为filename的文件，如果不存在输出错误信息
+    for (i=0; i<10; i++)
+    {
+        if ((addr = parentInode.i_addr[i]) == 0)
+        {   //文件不存在，创建文件
+            cout << "不存在文件: " << filename << endl;
+            return -1;
+        }
+        volume.seekg(addr * BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, filename.c_str()) == 0)
+            {   //找到文件名为filename的文件
+                Inode inode = getInode(entry.inodeNum);
+                if (inode.i_type != REG_FILE)
+                {
+                    cout << filename << "不是普通文件" << endl;
+                    return -1;
+                }
+                else
+                {
+                    inodeNum = entry.inodeNum;
+                    displayFile(inodeNum);
+                    return 0;
+                }
+
+            }
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //文件不存在
+            cout << "不存在文件: " << filename << endl;
+            return -1;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
+    }
+}
+
+int FileSys::writeFile(int parentInodeNum, string filename) //以更新的方式写文本文件
+{
+    fstream volume(volumeName);
+    Inode parentInode = getInode(parentInodeNum);
+    Entry entry;
+    int entryCount = 0, addr = 0, i = 0, inodeNum = 0;
+    //找到父目录下的文件名为filename的文件，如果不存在，则创建
+    for (i=0; i<10; i++)
+    {
+        if ((addr = parentInode.i_addr[i]) == 0)
+        {   //文件不存在，创建文件
+            inodeNum = createFile(filename, REG_FILE, curUid, parentInodeNum);
+            if (inodeNum == -1)
+            {
+                return -1;
+            }
+            break;
+        }
+        volume.seekg(addr*BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        int find = 0;
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, filename.c_str()) == 0)
+            {   //已找到文件
+                inodeNum = entry.inodeNum;
+                find = 1;
+                break;
+            }
+        }
+        if (find)
+        {
+            break;
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //文件不存在，创建文件
+            inodeNum = createFile(filename, REG_FILE, curUid, parentInodeNum);
+            if (inodeNum == -1)
+            {
+                return -1;
+            }
+            break;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
+    }
+    //写文本文件，以更新的方式
+    Inode inode = getInode(inodeNum);   //要写入的文件的inode
+    if (inode.i_type != REG_FILE)
+    {
+        cout << filename << "不是普通文件" << endl;
+        return -1;
+    }
+    char buf[512];
+    int charCount = 0;
+    char c;
+    int addrNum = 0;
+    addr = inode.i_addr[addrNum];   //要写入的文件的第一个存储块
+    getchar();  //去掉命令中输入的换行符
+    while ((c=getc(stdin)) != EOF)
+    {
+        //获取输入
+        buf[charCount] = c;
+        charCount++;
+        //写入
+        if (addr == 0)
+        {   //文件已分配的存储块满，这里未考虑间接索引的情况
+            addr = mallocBlock();
+            if (addr == -1)
+            {   //空闲块分配失败
+                cout << "文件卷已满" << endl;
+                return -1;
+            }
+            else
+            {
+                //更新inode区
+                inode.i_addr[addrNum] = addr;
+                writeInode(inode, inodeNum);
+            }
+        }
+        if (charCount == MAX_CHAR_COUNT)    //输入的字符数达到一个空闲块可存储的最多字符数
+        {
+            volume.seekp(addr * BLOCK_SIEZ);
+            volume.write((char *)&charCount, sizeof(int));
+            volume.write(buf, MAX_CHAR_COUNT);
+            //找到下一个存储块
+            addrNum++;
+            if (addrNum >= 10)
+            {
+                cout << endl << "超出文件大小范围" << endl;
+                return -1;
+            }
+            charCount = 0;
+            addr = inode.i_addr[addrNum];
+        }
+    }
+    if (charCount == 0)
+    {
+        return 0;
+    }
+    volume.seekp(addr * BLOCK_SIEZ);
+    volume.write((char *)&charCount, sizeof(int));
+    volume.write(buf, charCount);
+
+    //释放未用的存储块
+
+    return 0;
+}
+
+int FileSys::rmFile(int parentInodeNum, string filename)
+{
+    
     return 0;
 }
 

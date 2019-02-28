@@ -21,6 +21,9 @@ using namespace std;
 #define FIRST_FREE_BLOCK 22   //第一块空闲块位置
 #define MAX_ENTRY_COUNT 15  //目录文件每一块可存放最大目录项数
 #define MAX_CHAR_COUNT 508
+#define BIT_MAP 1       //空闲块位示图存放块下标
+#define DIR 0   //目录文件
+#define REG_FILE 1  //普通文件
 
 struct ManagementBlock{   //管理块
     int s_isize;    //i结点区总块数
@@ -58,8 +61,9 @@ private:
     ManagementBlock managementBlock;
     InodeBitMap inodeBitMap;
     BitMap bitmap;
-    Inode inode;
+    //Inode inode;
     string volumeName;
+    int curUid;
     int curOffset;
     int mallocInode();              //申请一个空闲inode，返回inode结点相对位置，不存在空闲inode时返回-1
     int mallocBlock();              //申请一个空闲块，返回空闲块绝对块号，不存在空闲块时返回-1
@@ -73,14 +77,16 @@ public:
     ~FileSys();
 
     int init();                     //初始化文件系统
-    int createFile(string filename,char type, int uid, int parentInodeNum);    //建立文件
+    int createFile(string filename,char type, int uid, int parentInodeNum); //创建成功时返回新文件inode号，否则返回-1    //建立文件
     int deleteFile(int inodeNum);    //删除文件
     int openFile(Inode inode);      //打开文件
     int closeFile(Inode inode);     //关闭文件
     int readFile();                 //读文件
-    int writeFile();                //关闭文件
     int displayFile(int inodeNum);   //显示文件内容，如果是目录文件，显示目录项，如果是普通文件，显示文件内容
-
+    int cdDir(int parentInodeNum, string dirName, int &curdir);          //进入目录
+    int catFile(int parentInodeNum, string filename);       //输出普通文件内容
+    int writeFile(int parentInodeNum, string filename);    //写文件
+    int rmFile(int parentInodeNum, string filename);    //删除文件
 };
 
 #endif //FILESYS_FILESYS_H
