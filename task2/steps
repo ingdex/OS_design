@@ -1,0 +1,14 @@
+linu4.16
+sudo apt-get install make
+sudo apt-get install gcc
+sudo make mrproper
+sudo apt-get install bison
+sudo apt-get install flex
+sudo make menuconfig
+sudo apt-get install build-essential openssl
+sudo apt-get install libidn11-dev libidn11
+sudo apt-get install libssl-dev
+sudo apt-get install zlibc minizip
+sudo make -j4
+sudo make modules_install
+sudo make install
