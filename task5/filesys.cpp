@@ -19,7 +19,17 @@ FileSys::FileSys(string filename)
         cout << "can't open file volume!" << endl;
         exit(0);
     }
+    logined = 0;    //未登录
     volume.read((char *)&managementBlock, sizeof(ManagementBlock));
+    if (managementBlock.s_flag != S_FLAG)
+    {
+        //第一次挂在文件卷时初始化
+        logined = 1;
+        init();
+        logined = 0;
+        volume.seekg(0);
+        volume.read((char *)&managementBlock, sizeof(ManagementBlock));
+    }
     volume.read((char *)&inodeBitMap, sizeof(InodeBitMap));
     volume.seekg(BIT_MAP * BLOCK_SIEZ);
     volume.read((char *)&bitmap, sizeof(BitMap));
@@ -33,6 +43,11 @@ FileSys::~FileSys()
 
 int FileSys::init()
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     fstream volume(volumeName);
     if (!volume.is_open())
     {
@@ -41,7 +56,7 @@ int FileSys::init()
     }
     char zero[BLOCK_SIEZ];
     memset(zero, 0, BLOCK_SIEZ);
-    managementBlock = {S_ISIZE, S_FSIZE, S_NFREE, S_NINDOE-1};
+    managementBlock = {S_FLAG, S_ISIZE, S_FSIZE, S_NFREE, S_NINDOE-1};
     //初始化管理块
     volume.write(zero, BLOCK_SIEZ);
     volume.seekp(0, ios_base::beg);
@@ -53,6 +68,14 @@ int FileSys::init()
         inodeBitMap.byte[i] = 0;
     }
     volume.write(inodeBitMap.byte, S_NINDOE/8);
+    //初始化用户区
+    usrCount = 1;
+    strcpy(usr.name, "root");
+    usr.id = -1;    //可访问所有文件
+    strcpy(usr.password, "root");   //初始密码root
+    volume.seekp(USR_REGION_OFFSET);
+    volume.write((char *)&usrCount, sizeof(int));
+    volume.write((char *)&usr, sizeof(Usr));
     //初始化位示图块
     bitmap.byte[0] = static_cast<char>(0xff);  //0、1块、inode区已占用、第一个空闲块为存放主目录第一块
     bitmap.byte[1] = static_cast<char>(0xff);
@@ -112,8 +135,42 @@ int FileSys::init()
     return 0;
 }
 
+int FileSys::login()
+{
+    //只考虑了单用户
+    fstream volume(volumeName);
+    int usrCount = 0;
+    string username, password;
+    volume.seekg(USR_REGION_OFFSET);
+    volume.read((char *)&usrCount, sizeof(int));
+    volume.read((char *)&usr, sizeof(Usr));
+    for (int i=0; i<3; i++)
+    {
+        cout << "username: ";
+        cin >> username;
+        cout << "password: ";
+        cin >> password;
+        if (!strcmp(usr.name, username.c_str()) && !strcmp(usr.password, password.c_str()))
+        {
+            logined = 1;
+            return 0;
+        }
+        else
+        {
+            cout << "用户名或密码错误" << endl;
+        }
+    }
+
+    return -1;
+}
+
 int FileSys::createFile(string filename, char type, int uid, int parentInodeNum)
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     fstream volume(volumeName);
     if (!volume.is_open())
     {
@@ -282,6 +339,11 @@ int FileSys::readFile() {}
 
 int FileSys::displayFile(int inodeNum)
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     fstream volume(volumeName);
     Inode inode = getInode(inodeNum);
     int i = 0, j= 0, addr = 0;
@@ -350,6 +412,11 @@ int FileSys::displayFile(int inodeNum)
 
 int FileSys::cdDir(int parentInodeNum, string dirName, int &curdir)          //进入目录
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     int  i = 0;
     int addr = 0;
     fstream volume(volumeName);
@@ -394,6 +461,11 @@ int FileSys::cdDir(int parentInodeNum, string dirName, int &curdir)          //�
 
 int FileSys::catFile(int parentInodeNum, string filename)       //输出普通文件内容
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     fstream volume(volumeName);
     Inode parentInode = getInode(parentInodeNum);
     Entry entry;
@@ -402,7 +474,7 @@ int FileSys::catFile(int parentInodeNum, string filename)       //输出普通�
     for (i=0; i<10; i++)
     {
         if ((addr = parentInode.i_addr[i]) == 0)
-        {   //文件不存在，创建文件
+        {   //文件不存在
             cout << "不存在文件: " << filename << endl;
             return -1;
         }
@@ -437,10 +509,17 @@ int FileSys::catFile(int parentInodeNum, string filename)       //输出普通�
         //未考虑目录文件存在间接索引情况
 
     }
+
+    return 0;
 }
 
 int FileSys::writeFile(int parentInodeNum, string filename) //以更新的方式写文本文件
 {
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
     fstream volume(volumeName);
     Inode parentInode = getInode(parentInodeNum);
     Entry entry;
@@ -551,8 +630,220 @@ int FileSys::writeFile(int parentInodeNum, string filename) //以更新的方式
 }
 
 int FileSys::rmFile(int parentInodeNum, string filename)
+{   //未考虑文件存在间接索引情况
+    if (!logined)
+    {
+        cout << "请先登录" << endl;
+        return -1;
+    }
+    fstream volume(volumeName);
+    Inode parentInode = getInode(parentInodeNum);
+    Inode inode;
+    Entry entry;
+    int entryCount = 0, addr = 0, i = 0, inodeNum = 0;
+    int blockPos = -1, entryPos = -1; //删除的目录项位置
+    //找到父目录下的文件名为filename的文件，如果不存在输出错误信息
+    for (i=0; i<10; i++)
+    {
+        if ((addr = parentInode.i_addr[i]) == 0)
+        {   //文件不存在
+            cout << "不存在文件: " << filename << endl;
+            return -1;
+        }
+        volume.seekg(addr * BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        int find = 0;
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, filename.c_str()) == 0)
+            {   //找到文件名为filename的文件
+                inode = getInode(entry.inodeNum);
+                inodeNum = entry.inodeNum;
+                blockPos = i;
+                entryPos = j;
+                find = 1;
+                break;
+            }
+        }
+        if (find)
+        {
+            break;
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //文件不存在
+            cout << "不存在文件: " << filename << endl;
+            return -1;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
+    }
+    //删除文件
+    if (inode.i_type == REG_FILE)
+    {   //文件是普通文件
+        rmRegFile(inodeNum);
+    }
+    else if (inode.i_type == DIR)
+    {   //文件是目录文件
+        rmDir(inodeNum);
+    }
+    //更新父目录目录项
+    if (blockPos == -1 || entryPos == -1)
+    {
+        cout << "rm bug" << endl;
+        exit(0);
+    }
+    for (int i=blockPos; i<10; i++)
+    {
+        addr = parentInode.i_addr[i];
+        volume.seekg(addr * BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //块中目录项未装满
+            for (int j=entryPos; j<entryCount-1; j++)
+            {
+                volume.seekg(addr * BLOCK_SIEZ + (j + 1) * sizeof(Entry));
+                volume.read((char *)&entry, sizeof(Entry));
+                volume.seekp(-2 * sizeof(Entry), ios_base::cur);
+                volume.write((char *)&entry, sizeof(Entry));
+            }
+            //更新entryCount
+            entryCount--;
+            volume.seekp(addr * BLOCK_SIEZ);
+            volume.write((char *)&entryCount, sizeof(int));
+            return 0;
+        }
+        else
+        {
+            //移动当前块中目录项
+            for (int j=entryPos; j<MAX_ENTRY_COUNT-1; j++)
+            {
+                volume.seekg(addr * BLOCK_SIEZ + (j + 1) * sizeof(Entry));
+                volume.read((char *)&entry, sizeof(Entry));
+                volume.seekp(-2 * sizeof(Entry), ios_base::cur);
+                volume.write((char *)&entry, sizeof(Entry));
+            }
+            //下一块中第一个目录项移动到当前块最后一个目录项
+            int addrNext = parentInode.i_addr[i+1];
+            int entryCountNext = 0;
+            Entry entryNext;
+            if (addrNext == 0)
+            {   //下一块不存在
+                //更新entryCount
+                entryCount--;
+                volume.seekp(addr * BLOCK_SIEZ);
+                volume.write((char *)&entryCount, sizeof(int));
+                return 0;
+            }
+            else
+            {
+                //读取下一块中目录项数
+                volume.seekg(addrNext * BLOCK_SIEZ);
+                volume.read((char *)&entryCountNext, sizeof(int));
+                if (entryCountNext == 0)
+                {   //bug
+                    cout << "bug" << endl;
+                }
+                else
+                {
+                    //将下一块中第一个目录项移动到当前块最后一个目录项
+                    volume.read((char *)&entryNext, sizeof(Entry));
+                    volume.seekp(addr * BLOCK_SIEZ + (MAX_ENTRY_COUNT - 1) * sizeof(Entry));
+                    volume.write((char *)&entryNext, sizeof(Entry));
+                    //如果下一块中目录项将变为0，释放该块并返回
+                    if (entryCountNext == 1)
+                    {
+                        parentInode.i_addr[i+1] = 0;
+                        writeInode(parentInode, parentInodeNum);
+                        freeBlock(addrNext);
+                        return 0;
+                    }
+                    //递归移动下一块中内容
+                    //blockPos = addrNext;
+                    entryPos = 0;
+                    continue;
+                }
+            }
+        }
+    }
+
+    //when bugs exist
+    return -1;
+}
+
+int FileSys::rmDir(int inodeNum)
 {
-    
+    fstream volume(volumeName);
+    int addr = 0, entryCount = 0;
+    Entry entry;
+    Inode inode = getInode(inodeNum);
+    Inode tmp;
+    //依次释放目录项指向的文件，不包括./和../
+    for (int i=0; i<10; i++)
+    {
+        if ((addr = inode.i_addr[i]) == 0)
+        {   //目录项搜索完成
+            break;
+        }
+        volume.seekg(addr * BLOCK_SIEZ);
+        volume.read((char *)&entryCount, sizeof(int));
+        for (int j=0; j<entryCount; j++)
+        {
+            volume.read((char *)&entry, sizeof(Entry));
+            if (strcmp(entry.name, "./") || strcmp(entry.name, "../"))
+            {
+                continue;
+            }
+            tmp = getInode(entry.inodeNum);
+            if (tmp.i_type == REG_FILE)
+            {
+                rmRegFile(entry.inodeNum);
+            }
+            else if (tmp.i_type == DIR)
+            {
+                rmDir(entry.inodeNum);
+            }
+        }
+        if (entryCount < MAX_ENTRY_COUNT)
+        {   //目录项搜索完毕
+            break;
+        }
+
+        //未考虑目录文件存在间接索引情况
+
+    }
+
+    //释放数据块
+    for (int i=0; i<10; i++)
+    {
+        addr = inode.i_addr[i];
+        if (addr == 0)
+        {
+            break;
+        }
+        freeBlock(addr);
+    }
+    //释放inode
+    freeInode(entry.inodeNum);
+}
+
+int FileSys::rmRegFile(int inodeNum)
+{
+    int addr = 0;
+    Inode inode = getInode(inodeNum);
+    //释放数据块
+    for (int i=0; i<10; i++)
+    {
+        addr = inode.i_addr[i];
+        if (addr == 0)
+        {
+            break;
+        }
+        freeBlock(addr);
+    }
+    //释放inode
+    freeInode(inodeNum);
     return 0;
 }
 
@@ -747,7 +1038,7 @@ int FileSys::mallocBlock()
 
 int FileSys::freeBlock(int blockPos)
 {
-    if (blockPos == 0)  //属于第一级目录
+    if (blockPos < FIRST_FREE_BLOCK)  //属于不可释放区
     {
         return -1;
     }

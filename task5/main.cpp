@@ -10,19 +10,20 @@ using namespace std;
 int main() {
     string opStr;
     int op = 1;
+    int re = 0;
     string filename = "./volume";
     FileSys fileSys(filename);
     cout << " ---------------------------------------" << endl;
     cout << "|  init       mkdir      touch      ls  |" << endl;
     cout << "|  cd         cat        write      rm  |" << endl;
-    cout << "|  exit                                 |" << endl;
+    cout << "|  su         exit                      |" << endl;
     cout << " ---------------------------------------" << endl;
     char type;
     int uid = 0;
     int curdir = 0; //当前目录inode号
     vector <string> curPath;
     curPath.push_back(string("mainDir"));
-    int re = 0;
+
     while (op)
     {
         for (int i=0; i<curPath.size(); i++)
@@ -44,6 +45,7 @@ int main() {
         else if (opStr == "cat")    op = 6;
         else if (opStr == "write")  op = 7;
         else if (opStr == "rm")     op = 8;
+        else if (opStr == "su")     op = 9;
         else if (opStr == "exit")   op = 0;
         else                        op = 100;
         switch (op)
@@ -52,7 +54,8 @@ int main() {
                 re = fileSys.init();
                 if (re == -1)
                 {
-                    exit(0);
+                    break;
+                    //exit(0);
                 }
                 cout << "init complete" << endl;
                 break;
@@ -81,7 +84,8 @@ int main() {
                 re = fileSys.displayFile(curdir);
                 if (re == -1)
                 {
-                    exit(0);
+                    break;
+                    //exit(0);
                 }
                 //cout << "displayFile complete" << endl;
                 break;
@@ -117,6 +121,9 @@ int main() {
             case 8: //rm
                 cin >> filename;
                 re = fileSys.rmFile(curdir, filename);
+                break;
+            case 9: //su
+                re = fileSys.login();
                 break;
             case 0:
                 break;
